@@ -1,33 +1,33 @@
 package snakefish.crypto
 package cipher.historical
 
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.HashMap
 import scala.language.implicitConversions
 
-case class PolybiusSquare(
-  val square: Array[Array[Char]],
-  val substitutes: Map[Char, Char] = Map()
-) {
+case class PolybiusSquare(val square: Array[Array[Char]], val missedToExisting: Map[Char, Char] = Map()) {
+  
+  private val charsToCoords = new HashMap[Char, (Int, Int)]()
+  
+  for (
+    row <- 0 until square.length;
+    col <- 0 until square(row).length
+  ) {
+    val chLower = square(row)(col).toLower
+    charsToCoords.put(chLower, (row, col))
+  }
+  
+  for ((missed, existing) <- missedToExisting) {
+    val existingCoords = charsToCoords.get(existing.toLower)
+    if (existingCoords.isDefined)
+      charsToCoords.put(missed.toLower, existingCoords.get)
+  }
+  
   def apply(row: Int): Array[Char] = square(row)
   def rowsCount: Int = square.length
   def colsCount: Int = square(0).length
   def lastRowLength: Int = square(square.length - 1).length
-  
-  def coords(ch: Char): Option[(Int, Int)] = {
-    val chLower = ch.toLower
-    
-    for (
-      row <- 0 until rowsCount;
-      col <- 0 until square(row).length)
-    {
-      if (square(row)(col) == chLower)
-        return Some(row, col)
-    }
-
-    val mappingCh = substitutes.get(chLower)
-    if (mappingCh.isEmpty) None else coords(mappingCh.get)
-  }
+  def coords(ch: Char): Option[(Int, Int)] = charsToCoords.get(ch.toLower)
 }
 
 object PolybiusSquare {
@@ -36,54 +36,45 @@ object PolybiusSquare {
 
   class DataCharNotInSquareException() extends Exception("Data contains symbols that are missing in provided square")
   
-  implicit def squareToArray(square: PolybiusSquare): Array[Array[Char]] =
-    square.square
+  implicit def squareToArray(square: PolybiusSquare): Array[Array[Char]] = square.square
   
-  implicit def arrayToSquare(array: Array[Array[Char]]): PolybiusSquare =
-    PolybiusSquare(array)
+  implicit def arrayToSquare(array: Array[Array[Char]]): PolybiusSquare = PolybiusSquare(array)
 
-  val LATIN = PolybiusSquare(
-    Array(Array('a', 'b', 'c', 'd', 'e'),
-      Array('f', 'g', 'h', 'i', 'k'),
-      Array('l', 'm', 'n', 'o', 'p'),
-      Array('q', 'r', 's', 't', 'u'),
-      Array('v', 'w', 'x', 'y', 'z')),
-    Map('j' -> 'i'))
+  val LATIN = PolybiusSquare(Array(Array('a', 'b', 'c', 'd', 'e'),
+                                   Array('f', 'g', 'h', 'i', 'k'),
+                                   Array('l', 'm', 'n', 'o', 'p'),
+                                   Array('q', 'r', 's', 't', 'u'),
+                                   Array('v', 'w', 'x', 'y', 'z')),
+                             Map('j' -> 'i'))
 
-  val RUSSIAN_ALL = PolybiusSquare(
-    Array(Array('а', 'б', 'в', 'г', 'д', 'е'),
-      Array('ё', 'ж', 'з', 'и', 'й', 'к'),
-      Array('л', 'м', 'н', 'о', 'п', 'р'),
-      Array('с', 'т', 'у', 'ф', 'х', 'ц'),
-      Array('ч', 'ш', 'щ', 'ъ', 'ы', 'ь'),
-      Array('э', 'ю', 'я')))
+  val RUSSIAN_ALL = PolybiusSquare(Array(Array('а', 'б', 'в', 'г', 'д', 'е'),
+                                         Array('ё', 'ж', 'з', 'и', 'й', 'к'),
+                                         Array('л', 'м', 'н', 'о', 'п', 'р'),
+                                         Array('с', 'т', 'у', 'ф', 'х', 'ц'),
+                                         Array('ч', 'ш', 'щ', 'ъ', 'ы', 'ь'),
+                                         Array('э', 'ю', 'я')))
 
-  val RUSSIAN_SHORT = PolybiusSquare(
-    Array(Array('а', 'б', 'в', 'г', 'д', 'е'),
-      Array('ж', 'з', 'и', 'к', 'л', 'м'),
-      Array('н', 'о', 'п', 'р', 'с', 'т'),
-      Array('у', 'ф', 'х', 'ц', 'ч', 'ш'),
-      Array('щ', 'ы', 'ь', 'э', 'ю', 'я')),
-    Map('ё' -> 'е',
-      'й' -> 'и',
-      'ъ' -> 'ь'))
+  val RUSSIAN_SHORT = PolybiusSquare(Array(Array('а', 'б', 'в', 'г', 'д', 'е'),
+                                           Array('ж', 'з', 'и', 'к', 'л', 'м'),
+                                           Array('н', 'о', 'п', 'р', 'с', 'т'),
+                                           Array('у', 'ф', 'х', 'ц', 'ч', 'ш'),
+                                           Array('щ', 'ы', 'ь', 'э', 'ю', 'я')),
+                                     Map('ё' -> 'е',
+                                         'й' -> 'и',
+                                         'ъ' -> 'ь'))
   
   def apply(key: CharSequence, alphabet: Alphabet): PolybiusSquare = 
     apply(key, alphabet, Map[Char, Char]())
 
-  def apply(
-    key: CharSequence,
-    alphabet: Alphabet,
-    substitutes: Map[Char, Char]
-  ): PolybiusSquare = {
-    val substitutesL = substitutes map { case (k, v) => (k.toLower, v.toLower) }
+  def apply(key: CharSequence, alphabet: Alphabet, missedToExisting: Map[Char, Char]): PolybiusSquare = {
+    val missedToExistingL = missedToExisting map { case (k, v) => (k.toLower, v.toLower) }
     val sqChars = new ArrayBuffer[Char](alphabet.length)
     
     def tryToAddToSquare(ch: Char): Unit = {
-      if (substitutesL.contains(ch)) return
+      if (missedToExistingL.contains(ch)) return
       if (sqChars.contains(ch)) return
       if (!alphabet.contains(ch)) return
-        sqChars += ch
+      sqChars += ch
     }
 
     for (i <- 0 until key.length) {
@@ -93,24 +84,24 @@ object PolybiusSquare {
     
     alphabet.toString.foreach(tryToAddToSquare)
     
-    PolybiusSquare(createSquare(sqChars), substitutesL)
+    PolybiusSquare(createSquare(sqChars), missedToExistingL)
   }
-
-  def apply(key: Long, alphabet: Alphabet): PolybiusSquare =
+  
+  def apply(key: Long, alphabet: Alphabet): PolybiusSquare = 
     apply(key, alphabet, Map[Char, Char]())
   
-  def apply(key: Long, alphabet: Alphabet, substitutes: Map[Char, Char]): PolybiusSquare = {
-    val substitutesL = substitutes map { case (k, v) => (k.toLower, v.toLower) }
+  def apply(key: Long, alphabet: Alphabet, missedToExisting: Map[Char, Char]): PolybiusSquare = {
+    val missedToExistingL = missedToExisting map { case (k, v) => (k.toLower, v.toLower) }
     val sqChars = new StringBuilder(alphabet.length)
     
     alphabet.toString.foreach((ch: Char) => {
-      if (!substitutesL.contains(ch) && !sqChars.contains(ch))
+      if (!missedToExistingL.contains(ch) && !sqChars.contains(ch))
         sqChars += ch
     })
     
     val shuffled = shuffle(sqChars, key)
     
-    PolybiusSquare(createSquare(shuffled), substitutesL)
+    PolybiusSquare(createSquare(shuffled), missedToExistingL)
   }
   
   private def createSquare(chars: CharSequence): Array[Array[Char]] = {
@@ -133,7 +124,7 @@ object PolybiusSquare {
     strictMode: Boolean = false): Array[Char] =
   {
     val dataNums = new ArrayBuffer[Int](data.length * 2)
-    val notInSquareChars = new mutable.HashMap[Int, Char]()
+    val notInSquareChars = new HashMap[Int, Char]()
 
     for (i <- 0 until data.length) {
       val dataCh = data.charAt(i)
